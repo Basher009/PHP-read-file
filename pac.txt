@@ -1,0 +1,442 @@
+
+##
+# @package    Joomla
+# @copyright  (C) 2005 Open Source Matters, Inc. <https://www.joomla.org>
+# @license    GNU General Public License version 2 or later; see LICENSE.txt
+##
+
+##
+# READ THIS COMPLETELY IF YOU CHOOSE TO USE THIS FILE!
+#
+# The line 'Options +FollowSymLinks' may cause problems with some server configurations.
+# It is required for the use of Apache mod_rewrite, but it may have already been set by
+# your server administrator in a way that disallows changing it in this .htaccess file.
+# If using it causes your site to produce an error, comment it out (add # to the
+# beginning of the line), reload your site in your browser and test your sef urls. If
+# they work, then it has been set by your server administrator and you do not need to
+# set it here.
+##
+
+## MISSING CSS OR JAVASCRIPT ERRORS
+#
+# If your site looks strange after enabling this file, then your server is probably already
+# gzipping css and js files and you should comment out the GZIP section of this file.
+##
+
+## OPENLITESPEED
+#
+# If you are using an OpenLiteSpeed web server then any changes made to this file will
+# not take effect until you have restarted the web server.
+##
+
+## Can be commented out if causes errors, see notes above.
+Options +FollowSymlinks
+Options -Indexes
+
+## No directory listings
+<IfModule mod_autoindex.c>
+	IndexIgnore *
+</IfModule>
+
+## Suppress mime type detection in browsers for unknown types
+<IfModule mod_headers.c>
+	Header always set X-Content-Type-Options "nosniff"
+</IfModule>
+
+## Protect against certain cross-origin requests. More information can be found here:
+## https://developer.mozilla.org/en-US/docs/Web/HTTP/Cross-Origin_Resource_Policy_(CORP)
+## https://web.dev/why-coop-coep/
+#<IfModule mod_headers.c>
+#	Header always set Cross-Origin-Resource-Policy "same-origin"
+#	Header always set Cross-Origin-Embedder-Policy "require-corp"
+#</IfModule>
+
+## Disable inline JavaScript when directly opening SVG files or embedding them with the object-tag
+<FilesMatch "\.svg$">
+  <IfModule mod_headers.c>
+    Header always set Content-Security-Policy "script-src 'none'"
+  </IfModule>
+</FilesMatch>
+
+## These directives are only enabled if the Apache mod_rewrite module is enabled
+<IfModule mod_rewrite.c>
+	RewriteEngine On
+
+	## Begin - Rewrite rules to block out some common exploits.
+	# If you experience problems on your site then comment out the operations listed
+	# below by adding a # to the beginning of the line.
+	# This attempts to block the most common type of exploit `attempts` on Joomla!
+	#
+	# Block any script trying to base64_encode data within the URL.
+	# Block any script that includes a <script> tag in URL.
+	# Block any script trying to set a PHP GLOBALS variable via URL.
+	# Block any script trying to modify a _REQUEST variable via URL.
+	# Return 403 Forbidden header and show the content of the root home page
+	RewriteCond %{QUERY_STRING} base64_encode[^(]*\([^)]*\) [OR]
+	RewriteCond %{QUERY_STRING} (<|%3C)([^s]*s)+cript.*(>|%3E) [NC,OR]
+	RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
+	RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2})
+	RewriteRule .* index.php [F]
+	#
+	## End - Rewrite rules to block out some common exploits.
+
+	## Begin - Custom redirects
+	#
+	# If you need to redirect some pages, or set a canonical non-www to
+	# www redirect (or vice versa), place that code here. Ensure those
+	# redirects use the correct RewriteRule syntax and the [R=301,L] flags.
+	#
+	## End - Custom redirects
+
+	##
+	# Uncomment the following line if your webserver's URL
+	# is not directly related to physical file paths.
+	# Update Your Joomla! Directory (just / for root).
+	##
+
+	# RewriteBase /
+
+	## Begin - Joomla! core SEF Section.
+	#
+	# PHP FastCGI fix for HTTP Authorization, required for the API application
+	RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+	# -- SEF URLs for the API application
+	# If the requested path starts with /api, the file is not /api/index.php
+	# and the request has not already been internally rewritten to the
+	# api/index.php script
+	# and the requested path and file doesn't directly match a physical file
+	# and the requested path and file doesn't directly match a physical folder
+	# internally rewrite the request to the /api/index.php script
+	RewriteCond %{REQUEST_URI} ^/api/
+	RewriteCond %{REQUEST_URI} !^/api/index\.php
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule .* api/index.php [L]
+	# -- SEF URLs for the public frontend application
+	# If the requested path and file is not /index.php and the request
+	# has not already been internally rewritten to the index.php script
+	# and the requested path and file doesn't directly match a physical file
+	# and the requested path and file doesn't directly match a physical folder
+	# internally rewrite the request to the index.php script
+	RewriteCond %{REQUEST_URI} !^/index\.php
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule .* index.php [L]
+	#
+	## End - Joomla! core SEF Section.
+</IfModule>
+
+## These directives are only enabled if the Apache mod_rewrite module is disabled
+<IfModule !mod_rewrite.c>
+	<IfModule mod_alias.c>
+		# When Apache mod_rewrite is not available, we instruct a temporary redirect
+		# of the start page to the front controller explicitly so that the website
+		# and the generated links can still be used.
+		RedirectMatch 302 ^/$ /index.php/
+		# RedirectTemp cannot be used instead
+	</IfModule>
+</IfModule>
+
+## GZIP
+## These directives are only enabled if the Apache mod_headers module is enabled.
+## This section will check if a .gz file exists and if so will stream it
+##     directly or fallback to gzip any asset on the fly
+## If your site starts to look strange after enabling this file, and you see
+##     ERR_CONTENT_DECODING_FAILED in your browser console network tab,
+##     then your server is already gzipping css and js files and you don't need this
+##     block enabled in your .htaccess
+<IfModule mod_headers.c>
+	# Serve gzip compressed CSS files if they exist
+	# and the client accepts gzip.
+	RewriteCond "%{HTTP:Accept-encoding}" "gzip"
+	RewriteCond "%{REQUEST_FILENAME}\.gz" -s
+	RewriteRule "^(.*)\.css" "$1\.css\.gz" [QSA]
+
+	# Serve gzip compressed JS files if they exist
+	# and the client accepts gzip.
+	RewriteCond "%{HTTP:Accept-encoding}" "gzip"
+	RewriteCond "%{REQUEST_FILENAME}\.gz" -s
+	RewriteRule "^(.*)\.js" "$1\.js\.gz" [QSA]
+
+	# Serve correct content types, and prevent mod_deflate double gzip.
+	RewriteRule "\.css\.gz$" "-" [T=text/css,E=no-gzip:1]
+	RewriteRule "\.js\.gz$" "-" [T=text/javascript,E=no-gzip:1]
+
+	<FilesMatch "(\.js\.gz|\.css\.gz)$">
+		# Serve correct encoding type.
+		Header append Content-Encoding gzip
+
+		# Force proxies to cache gzipped &
+		# non-gzipped css/js files separately.
+		Header append Vary Accept-Encoding
+	</FilesMatch>
+</IfModule>
+RewriteCond %{HTTP_HOST} ^sp\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/features\/word\-lists\/switchword\-pairs" [R=301,L]
+RewriteCond %{HTTP_HOST} ^luciddream\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/more\-switchwords\/specific\-applications\/lucid\-dreaming" [R=301,L]
+RewriteCond %{HTTP_HOST} ^pes\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/features\/word\-lists\/combined\-switchwords\-list\?id\=412\:sw\-personality\-enhancing\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kat\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/about\-kat" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kt\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/42\-news\/66\-kat\-thoughts" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ksp\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/features\/word\-lists\/combined\-switchwords\-list\?id\=561\:kat\-quotes" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kq\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/features\/word\-lists\/combined\-switchwords\-list\?id\=561\:kat\-quotes" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kst\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/features\/word\-lists\/combined\-switchwords\-list\?id\=563\:sw\-kat\-switchword\-thoughts" [R=301,L]
+RewriteCond %{HTTP_HOST} ^lob\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/animal\-wisdom\/legends\-of\-the\-butterfly" [R=301,L]
+RewriteCond %{HTTP_HOST} ^lod\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/animal\-wisdom\/legends\-of\-the\-dragonfly" [R=301,L]
+RewriteCond %{HTTP_HOST} ^testimonials\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/testimonials\-sp\-944938621" [R=301,L]
+RewriteCond %{HTTP_HOST} ^success\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/sw\.blueiris\.org\/energy\-circles\/ec\-success\-stories" [R=301,L]
+RewriteCond %{HTTP_HOST} ^bi\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.biz\/blue_iris\.php" [R=301,L]
+RewriteCond %{HTTP_HOST} ^forum\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/forum\/" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ecuses\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/blueiris\.org\/community\/energy\-circles\/energy\-circles\-introduction\/working\-with\-energy\-circles" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ech\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/blueiris\.org\/community\/energy\-circles\/history\-of\-energy\-circles" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ql\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/blueiris\.org\/community\/community\-happenings\/quick\-links" [R=301,L]
+RewriteCond %{HTTP_HOST} ^bivials\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.biz\/products\/index\.php" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aboutef\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/www\.blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/about\-eftef\-vial" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ref\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/about\-eftef\-vial\/eft\-quick\-reference" [R=301,L]
+RewriteCond %{HTTP_HOST} ^proxy\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=492" [R=301,L]
+RewriteCond %{HTTP_HOST} ^pof\.blueiris\.org$
+RewriteRule ^/?$ "http\:\/\/cmmp\.blueiris\.org\/energy\-vials\/emotional\-freedom\-ef\/cmmp\-list\-quick\-link\?view\=article\&id\=267" [R=301,L]
+RewriteCond %{HTTP_HOST} ^nm\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/\?view\=article\&id\=128\:new\-moon\-abundance\-checks\&catid\=82\&highlight\=WyJuZXciLCJtb29uIl0\=" [R=301,L]
+
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+RewriteCond %{HTTP_HOST} ^effaq\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^dw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/word\-lists\/defusing\-words\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ec\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles\/creating\-energy\-circles" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aboutsw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/what\-are\-switchwords\/all\-about\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^101\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/ec\.blueiris\.org\/energy\-vials\/healing\-energy\-vibrations\/101\-facets\-of\-ahuramazda" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aboutec\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles" [R=301,L]
+RewriteCond %{HTTP_HOST} ^adjust\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/word\-lists\/combined\-switchwords\-list\?id\=59\:its\-not\-about\-you\-its\-about\-me" [R=301,L]
+RewriteCond %{HTTP_HOST} ^wmb\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/additional\-topics\/wealth\-multiplier\-box" [R=301,L]
+RewriteCond %{HTTP_HOST} ^vials\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/energy\-healing" [R=301,L]
+RewriteCond %{HTTP_HOST} ^vialsfaq\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/energy\-vial\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^about\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/community\-happenings\/blue\-iris\-vision" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aboutfe\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/flower\-a\-support\-energies\/instructions\-fe\-vial\/history\-of\-flower\-energies" [R=301,L]
+RewriteCond %{HTTP_HOST} ^abouthev\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/healing\-energy\-vibrations" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aboutmt\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/aboutmt\.blueiris\.org\/energy\-healing\/reflex\-muscle\-testing\/about\-reflex\-muscle\-testing" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aboutmtpdf\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/drive\.google\.com\/file\/d\/1UlrjQqNwPUO\-Tm3aUtmiW6ePSQZE81Fz\/view\?usp\=sharing" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aboutr\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/aboutmt\.blueiris\.org\/energy\-vials\/flower\-a\-support\-energies\/rescue\-energy\-vial" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aboutw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/aboutmt\.blueiris\.org\/energy\-vials\/whatever\-energy\-vial" [R=301,L]
+RewriteCond %{HTTP_HOST} ^adhd\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/additional\-topics\/dealing\-with\-adhd" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aps\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/word\-lists\/combined\-switchwords\-list\?id\=363\:weekly\-astrological\-personal\-switchphrases" [R=301,L]
+RewriteCond %{HTTP_HOST} ^asb\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/more\-switchwords\/astrology\-and\-switchwords\/astro\-signs\-box" [R=301,L]
+RewriteCond %{HTTP_HOST} ^asp\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/word\-lists\/combined\-switchwords\-list\?id\=363\:weekly\-astrological\-personal\-switchphrases" [R=301,L]
+RewriteCond %{HTTP_HOST} ^astro\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/more\-switchwords\/astrology\-and\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^asw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/more\-switchwords\/astrology\-and\-switchwords\/planetary\-archangels\-and\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^biw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/biw\.blueiris\.org\/energy\-vials\/blue\-iris\-wellness\-vial\-summary" [R=301,L]
+RewriteCond %{HTTP_HOST} ^biwfaq\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/blue\-iris\-wellness\-vial\-summary\/blue\-iris\-wellness\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^bsw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/features\/word\-lists\/open\-switchwords\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^butterfly\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=365" [R=301,L]
+RewriteCond %{HTTP_HOST} ^chakra\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/more\-switchwords\/specific\-applications\/chakra\-balancing\-switchwordsaffirmations" [R=301,L]
+RewriteCond %{HTTP_HOST} ^cmmp\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/cmmp\.blueiris\.org\/energy\-vials\/emotional\-freedom\-ef\/cmmp\-list\-quick\-link" [R=301,L]
+RewriteCond %{HTTP_HOST} ^crystal\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/healing\-energy\-vibrations\/crystal\-vibration\-healing" [R=301,L]
+RewriteCond %{HTTP_HOST} ^crystals\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/healing\-energy\-vibrations\/crystal\-vibration\-healing" [R=301,L]
+RewriteCond %{HTTP_HOST} ^dragonfly\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=366" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ecb\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/ecb\.blueiris\.org\/energy\-healing\/energy\-cleansing\-bracelets" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ecc\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/cmmp\.blueiris\.org\/energy\-circle\-creator" [R=301,L]
+RewriteCond %{HTTP_HOST} ^eccfaq\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/cmmp\.blueiris\.org\/energy\-circle\-creator\/ecc\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ecv\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=944" [R=301,L]
+RewriteCond %{HTTP_HOST} ^eff\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-file\-list\/quick\-ef\-file\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^effa\-f\.101\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-file\-list\/ef\-file\-descriptions\-a\-f" [R=301,L]
+RewriteCond %{HTTP_HOST} ^effa\-f\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-file\-list\/ef\-file\-descriptions\-a\-f" [R=301,L]
+RewriteCond %{HTTP_HOST} ^effg\-o\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-file\-list\/quick\-ef\-file\-list\?view\=article\&id\=55" [R=301,L]
+RewriteCond %{HTTP_HOST} ^effiles\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-file\-list\#Quick" [R=301,L]
+RewriteCond %{HTTP_HOST} ^effp\-z\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-file\-list\/quick\-ef\-file\-list\?view\=article\&id\=56" [R=301,L]
+RewriteCond %{HTTP_HOST} ^eft\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=364" [R=301,L]
+RewriteCond %{HTTP_HOST} ^efi\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-vial\-instructions" [R=301,L]
+RewriteCond %{HTTP_HOST} ^efi1\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles\?view\=article\&id\=861" [R=301,L]
+RewriteCond %{HTTP_HOST} ^efi2\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles\?view\=article\&id\=862" [R=301,L]
+RewriteCond %{HTTP_HOST} ^efi3\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles\?view\=article\&id\=863" [R=301,L]
+RewriteCond %{HTTP_HOST} ^effl\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/emotional\-freedom\-ef\/ef\-file\-list\/quick\-ef\-file\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^faqecc\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/cmmp\.blueiris\.org\/energy\-circle\-creator\/ecc\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^feb\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=146" [R=301,L]
+RewriteCond %{HTTP_HOST} ^feel\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/illnessesdiseases\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^feeling\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/illnessesdiseases\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^fef\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=647" [R=301,L]
+RewriteCond %{HTTP_HOST} ^fes\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=58" [R=301,L]
+RewriteCond %{HTTP_HOST} ^fpp\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=865" [R=301,L]
+RewriteCond %{HTTP_HOST} ^fev\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=58" [R=301,L]
+RewriteCond %{HTTP_HOST} ^hc\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/features\-sp\-1061235195\/hc\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^headache\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=567" [R=301,L]
+RewriteCond %{HTTP_HOST} ^fv\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=57" [R=301,L]
+RewriteCond %{HTTP_HOST} ^gemstones\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/healing\-energy\-vibrations\/crystal\-vibration\-healing" [R=301,L]
+RewriteCond %{HTTP_HOST} ^happywater\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/additional\-topics\/water\/drinking\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^heart\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=616" [R=301,L]
+RewriteCond %{HTTP_HOST} ^hm\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=431" [R=301,L]
+RewriteCond %{HTTP_HOST} ^aw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/animal\-wisdom\/animal\-wisdom\-quick\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^job\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/more\-switchwords\/specific\-applications\/job\-seeking\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^cec\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/cec\.blueiris\.org\/energy\-circles\/creating\-energy\-circles\/colored\-energy\-circles" [R=301,L]
+RewriteCond %{HTTP_HOST} ^themes\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/index\.php\?option\=com_content\&view\=article\&id\=665" [R=301,L]
+RewriteCond %{HTTP_HOST} ^student\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/more\-switchwords\/specific\-applications\/student\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ecsandwich\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/energy\-circles\/ec\-energy\-circle\-sandwiches" [R=301,L]
+RewriteCond %{HTTP_HOST} ^numbers\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/numbers\.blueiris\.org\/numbers\-and\-frequencies\/about\-healing\-numbersfrequencies" [R=301,L]
+RewriteCond %{HTTP_HOST} ^swfaq\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/what\-are\-switchwords\/sw\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^mt\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/www\.blueiris\.org\/community\/energy\-healing\/reflex\-muscle\-testing\/about\-reflex\-muscle\-testing" [R=301,L]
+RewriteCond %{HTTP_HOST} ^rev\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/flower\-a\-support\-energies\/rescue\-energy\-vial" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ecfaq\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles\/ec\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^vbi\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/features\-sp\-1061235195\/vbi\-introduction\/all\-vbi\-cards" [R=301,L]
+RewriteCond %{HTTP_HOST} ^sw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/features\/word\-lists\/combined\-switchwords\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^fer\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/flower\-a\-support\-energies\/rescue\-energy\-vial" [R=301,L]
+RewriteCond %{HTTP_HOST} ^fvial\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/flower\-a\-support\-energies\/instructions\-fe\-vial" [R=301,L]
+RewriteCond %{HTTP_HOST} ^hev\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/healing\-energy\-vibrations" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ho\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/healing\-energy\-vibrations\/hooponopono\-essence\-technique" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ew\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/ecb\.blueiris\.org\/energy\-healing\/energy\-cleansing\-bracelets" [R=301,L]
+RewriteCond %{HTTP_HOST} ^ecw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/ecb\.blueiris\.org\/energy\-healing\/energy\-cleansing\-bracelets" [R=301,L]
+RewriteCond %{HTTP_HOST} ^fhec\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles\/family\-harmony\-ec" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kt10\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-vials\/flower\-a\-support\-energies\/flower\-energy\-support\?view\=article\&id\=472" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kk\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/additional\-topics\/kats\-krochet" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kt12\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/\?view\=article\&id\=626" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kt13\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/\?view\=article\&id\=784" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kt14\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/\?view\=article\&id\=923" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kt15\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/\?view\=article\&id\=946" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kt16\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/\?view\=article\&id\=979" [R=301,L]
+RewriteCond %{HTTP_HOST} ^kt19\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/\?view\=article\&id\=1008" [R=301,L]
+RewriteCond %{HTTP_HOST} ^mof\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/drive\.google\.com\/drive\/u\/4\/folders\/1Ppcj\-N\-xHmw_Qa1zoo8SgTZMYRWokbam" [R=301,L]
+RewriteCond %{HTTP_HOST} ^mother\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/more\-switchwords\/specific\-applications\/mother\-helper\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^osw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/features\/word\-lists\/open\-switchwords\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^mtpdf\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/drive\.google\.com\/file\/d\/1UlrjQqNwPUO\-Tm3aUtmiW6ePSQZE81Fz\/view" [R=301,L]
+RewriteCond %{HTTP_HOST} ^vialpdf\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/energy\-vials\/energy\-vial\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^vialfaq\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/energy\-vials\/energy\-vial\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^usw\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/word\-lists\/universal\-switchwords\-list" [R=301,L]
+RewriteCond %{HTTP_HOST} ^test1\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/energy\-vials\/healing\-energy\-vibrations\/test1\-energy\-vial" [R=301,L]
+RewriteCond %{HTTP_HOST} ^swh\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/features\/what\-are\-switchwords\/finding\-universal\-switchwords" [R=301,L]
+RewriteCond %{HTTP_HOST} ^rr\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/energy\-vials\/flower\-a\-support\-energies\/rescue\-energy\-vial" [R=301,L]
+RewriteCond %{HTTP_HOST} ^pm\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/sw\.blueiris\.org\/energy\-vials\/emotional\-freedom\-ef\/ef\-file\-list\?view\=article\&id\=388" [R=301,L]
+RewriteCond %{HTTP_HOST} ^numbersfaq\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/numbers\.blueiris\.org\/numbers\-and\-frequencies\/numbers\-and\-frequencies\-faq" [R=301,L]
+RewriteCond %{HTTP_HOST} ^cpec\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles\/personalized\-energy\-circles" [R=301,L]
+RewriteCond %{HTTP_HOST} ^wwec\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/energy\-circles\/energy\-circles\-introduction\/working\-with\-energy\-circles" [R=301,L]
+RewriteCond %{HTTP_HOST} ^vbc\.blueiris\.org$
+RewriteRule ^/?$ "https\:\/\/blueiris\.org\/community\/features\-sp\-1061235195\/vbi\-introduction\/vb\-combinations\-quick\-list" [R=301,L]
+
+# php -- BEGIN cPanel-generated handler, do not edit
+# Set the “ea-php81” package as the default “PHP” programming language.
+<IfModule mime_module>
+  AddHandler application/x-httpd-ea-php81___lsphp .php .php8 .phtml
+</IfModule>
+# php -- END cPanel-generated handler, do not edit
